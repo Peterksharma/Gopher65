@@ -84,9 +84,13 @@ debug = true
 strip = false
 
 [package.metadata.bundle]
-name = "Gopher64"
-identifier = "io.github.gopher64.gopher64"
+# Gopher65 fork: distinct name + identifier so it can coexist with an installed
+# upstream gopher64 and keep its own config/data directories. libusb is bundled
+# so the Switch 2 controller works without Homebrew (SDL loads it from
+# @executable_path/../Frameworks — see third_party/sdl3-src-patched).
+name = "Gopher65"
+identifier = "io.github.peterksharma.gopher65"
 category = "public.app-category.games"
 icon = ["data/icon/gopher64_128x128.png","data/icon/gopher64_256x256.png","data/icon/gopher64_512x512.png"]
-osx_frameworks = ["/opt/homebrew/opt/molten-vk/lib/libMoltenVK.dylib"]
+osx_frameworks = ["/opt/homebrew/opt/molten-vk/lib/libMoltenVK.dylib","/opt/homebrew/opt/libusb/lib/libusb-1.0.dylib"]
 osx_minimum_system_version = "15.0"

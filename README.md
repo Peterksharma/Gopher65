@@ -1,85 +1,118 @@
-# gopher64
-Gopher64 is a cross-platform N64 emulator. Some notable features:
-* Netplay
-* Homebrew support
-* Upscaling
-* CRT shader
-* Emulate CPU overclocking
-* Cheats
-* Savestates
-* RetroAchievements
+# Gopher65
 
-## download
+**Gopher65 is a fork of [gopher64](https://github.com/gopher64/gopher64)** (a
+cross-platform N64 emulator by loganmc10) that adds three things on top of it:
 
-<a href="https://loganmc10.itch.io/gopher64"><img src="https://static.itch.io/images/badge.svg" width="200" ></a>
+1. **Nintendo Switch 2 Pro Controller support on macOS.** Upstream SDL's Switch 2
+   driver is libusb-only and cannot claim the HID interface the macOS kernel
+   holds, so the controller does not work there. Gopher65 builds SDL from a
+   minimally-patched copy that opens its own libusb handle on the controller's
+   vendor bulk interface. The patch is macOS-only and inert on every other
+   platform.
+2. **Multiple local players in netplay.** One machine can drive more than one
+   local player in an online session (couch co-op alongside networked players).
+3. **Embedded host signaling + an on-screen net overlay.** A player can host the
+   netplay rendezvous in-process (`--netplay-host`) — no third-party or cloud
+   server — and an F1 overlay shows FPS plus ping / bandwidth / rollback lead &
+   lag for tuning.
 
-Windows:
-* Standalone executable: [gopher64-windows-x86_64.exe](https://github.com/gopher64/gopher64/releases/latest/download/gopher64-windows-x86_64.exe)
+Everything else is stock gopher64.
 
-MacOS:
-* App Bundle: [gopher64-macos-aarch64.zip](https://github.com/gopher64/gopher64/releases/latest/download/gopher64-macos-aarch64.zip)
-* Homebrew: `brew install --cask gopher64`
+## Relationship to upstream
 
-Linux:
-* Standalone executable: [gopher64-linux-x86_64](https://github.com/gopher64/gopher64/releases/latest/download/gopher64-linux-x86_64)
-* Flatpak: `flatpak install flathub io.github.gopher64.gopher64`
+This is an **independent fork and is not affiliated with or endorsed by the
+gopher64 project.** Please **do not** file Gopher65 issues on the upstream
+tracker or ask loganmc10 for support with this build — use this repository's
+issue tracker instead. Enormous credit and thanks to loganmc10 and the gopher64
+contributors for the emulator this is built on.
 
-Android:
-* APK: [gopher64-android.apk](https://github.com/gopher64/gopher64/releases/latest/download/gopher64-android.apk)
+> **Netplay compatibility:** Gopher65 uses its own signaling and does not connect
+> to the official gopher64 lobby. Everyone in a session must run **Gopher65**
+> (matching versions). It will not matchmake with players on stock gopher64.
 
-## wiki
+## Downloads
 
-https://github.com/gopher64/gopher64/wiki
+Grab the latest build from this repository's [Releases](../../releases).
 
-## discord
+- **Windows** (x86_64 / arm64): standalone `.exe`. Unsigned — SmartScreen will
+  warn on first run; choose *More info → Run anyway*.
+- **macOS** (Apple Silicon): `.app` in a `.zip`. Not notarized — on first launch
+  **right-click the app → Open** (or run `xattr -cr Gopher65.app` once).
 
-[Discord invite link](https://discord.gg/9RGXq8W8JQ)
+## Netplay usage
 
-## controls
+Player numbers are 0-based (P1 = 0, P2 = 1, …). `--netplay-number-of-players` is
+the **total** across all machines.
 
-Keys are mapped according to [these defaults](https://github.com/gopher64/gopher64/wiki/Default-Keyboard-Setup). Xbox-style controllers also have a [default mapping applied](https://github.com/gopher64/gopher64/wiki/Default-Gamepad-Setup).
-
-## netplay
-
-Gopher64 supports P2P netplay (online play with others).
-
-Please read the [guide](https://github.com/gopher64/gopher64/wiki/Netplay-Guide) before trying out netplay.
-
-## portable mode
-
-If you would like to keep all the game data in the same folder as the executable, you just need to create a file called "portable.txt" in the same directory as the executable.
-
-## flatpak
-
-If you want to run the flatpak from the command line, you need to add the `--filesystem=host:ro` option, for example:
+**Host** (also plays; brokers the handshake in-process — no external server):
 
 ```
-flatpak run --filesystem=host:ro io.github.gopher64.gopher64 /path/to/rom.z64
+gopher65 --netplay-host \
+         --netplay-room gauntlet \
+         --netplay-player-number 0 \
+         --netplay-number-of-players 3 \
+         --netplay-input-delay 2 \
+         "/path/to/rom.z64"
 ```
 
-## building and usage
+**Joiners** point at the host's LAN/public IP and the same room:
 
-1. Linux only: [install the SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies)
-2. [Install rust](https://www.rust-lang.org/tools/install)
-3. `git clone --recursive https://github.com/gopher64/gopher64.git`
-4. `cd gopher64`
+```
+gopher65 --netplay-server-addr ws://HOST_IP:3536/gauntlet \
+         --netplay-player-number 2 \
+         --netplay-number-of-players 3 \
+         --netplay-input-delay 2 \
+         "/path/to/rom.z64"
+```
+
+**Couch co-op:** to drive two local players on one machine, pass
+`--netplay-player-number` twice (e.g. `--netplay-player-number 0
+--netplay-player-number 1`) and enable both ports in Controller Configuration,
+one physical controller each.
+
+Notes:
+- Default host port is `3536` (override with `--netplay-host-port`).
+- On a **LAN** this needs no setup. Over the **internet**, the host must
+  forward the signaling port; gameplay itself is direct P2P (STUN-assisted),
+  so it uses little bandwidth. Very strict/CGNAT setups may need a TURN relay.
+- All players must load the **exact same ROM** file (byte-identical).
+- Press **F1** in-game for the FPS / netplay overlay; lower input delay while
+  watching lead/lag stay near zero.
+
+## Building
+
+1. Linux only: [install the SDL3 build dependencies](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies).
+2. [Install Rust](https://www.rust-lang.org/tools/install).
+3. `git clone --recursive https://github.com/Peterksharma/Gopher65.git`
+4. `cd Gopher65`
 5. `cargo build --release`
 6. `./target/release/gopher64 /path/to/rom.z64`
 
-## contributing
+The patched SDL is vendored in `third_party/sdl3-src-patched/` and wired in via
+`[patch.crates-io]`, so no extra steps are needed — it compiles statically into
+the binary.
 
-PRs that are vibe coded and/or co-authored by AI agents (Plan/Agent mode) are not permitted. If you are going to submit a PR, it should be scoped to a single feature/improvement.
+## Controls & general use
 
-Please contact me via a GitHub issue or Discord (loganmc10) before doing substantial work on a PR.
+Gopher65 inherits gopher64's controls and features. See the upstream
+[wiki](https://github.com/gopher64/gopher64/wiki) for keyboard/gamepad defaults,
+homebrew, savestates, cheats, and RetroAchievements.
 
-## license
+## License
 
-Gopher64 is licensed under the GPLv3 license. Many portions of gopher64 have been adapted from mupen64plus and/or ares. The license for mupen64plus can be found [here](https://github.com/mupen64plus/mupen64plus-core/blob/master/LICENSES). The license for ares can be found [here](https://github.com/ares-emulator/ares/blob/master/LICENSE).
+Gopher65, like gopher64, is licensed under the **GPLv3** (see [LICENSE](LICENSE)).
+Many portions of gopher64 have been adapted from mupen64plus and/or ares; the
+mupen64plus license is [here](https://github.com/mupen64plus/mupen64plus-core/blob/master/LICENSES)
+and the ares license is [here](https://github.com/ares-emulator/ares/blob/master/LICENSE).
 
-## privacy and code signing policy
+`third_party/sdl3-src-patched/` is SDL (zlib license) as distributed in the
+`sdl3-src` crate, with the macOS-only patches described above; its license is
+retained in that directory.
 
-Free code signing for the Windows release is provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+## Privacy
 
-During online netplay sessions, the server logs your IP address and basic session information (game title and session name) for operational purposes. No additional personal data is collected or stored.
-
-If you enable the RetroAchievements feature, some data is sent to their systems. Please see their terms [here](https://retroachievements.org/terms).
+During netplay, the host's signaling server sees the connecting players' IP
+addresses as part of establishing the peer-to-peer connection (the same
+information any direct connection reveals). No data is collected or stored by
+this project. If you enable RetroAchievements, some data is sent to their
+systems — see their [terms](https://retroachievements.org/terms).

@@ -45,8 +45,16 @@ bool SDL_InitLibUSB(SDL_LibUSBContext **ctx)
         SDL_libusb_handle = SDL_LoadObject(SDL_LIBUSB_DYNAMIC);
 #ifdef SDL_PLATFORM_MACOS
         /* The bare dylib name is not on dyld's default search path when
-         * libusb comes from a package manager, so fall back to the
-         * conventional install locations. */
+         * libusb comes from a package manager or is bundled inside an .app,
+         * so fall back to known locations. Prefer a copy shipped inside the
+         * application bundle (dyld resolves @executable_path/@loader_path for
+         * dlopen), then the conventional Homebrew/local install paths. */
+        if (!SDL_libusb_handle) {
+            SDL_libusb_handle = SDL_LoadObject("@executable_path/../Frameworks/libusb-1.0.dylib");
+        }
+        if (!SDL_libusb_handle) {
+            SDL_libusb_handle = SDL_LoadObject("@loader_path/../Frameworks/libusb-1.0.dylib");
+        }
         if (!SDL_libusb_handle) {
             SDL_libusb_handle = SDL_LoadObject("/opt/homebrew/lib/libusb-1.0.dylib");
         }

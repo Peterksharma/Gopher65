@@ -98,19 +98,21 @@ impl ServerState {
         let prev_peers = peers.iter().cloned().collect();
 
         match room.next {
+            // Full mesh (what gopher64 uses): no target count, just add the peer.
             None => {
                 peers.insert(peer_id);
             }
-            Some(num_players) => {
-                if peers.len() == num_players - 1 {
-                    let mut matched_by_next = self.matched_by_next.lock().unwrap();
-                    let mut updated_peers = peers.clone();
-                    updated_peers.insert(peer_id);
-                    matched_by_next.insert(updated_peers.into_iter().collect());
-                    peers.clear(); // room is complete
-                } else {
-                    peers.insert(peer_id);
-                }
+            // Matchmaking-by-count: when this peer completes the room, record the
+            // finished group and clear the room so the next group starts fresh.
+            Some(num_players) if peers.len() == num_players - 1 => {
+                let mut matched_by_next = self.matched_by_next.lock().unwrap();
+                let mut updated_peers = peers.clone();
+                updated_peers.insert(peer_id);
+                matched_by_next.insert(updated_peers.into_iter().collect());
+                peers.clear(); // room is complete
+            }
+            Some(_) => {
+                peers.insert(peer_id);
             }
         };
 
@@ -231,10 +233,10 @@ impl SignalingTopology<NoCallbacks, ServerState> for FullMeshTopology {
                         .to_string()
                         .into(),
                     );
-                    if let Some(peer) = state.get_peer(&receiver) {
-                        if let Err(e) = peer.sender.send(Ok(event)) {
-                            eprintln!("signaling: error relaying signal: {e:?}");
-                        }
+                    if let Some(peer) = state.get_peer(&receiver)
+                        && let Err(e) = peer.sender.send(Ok(event))
+                    {
+                        eprintln!("signaling: error relaying signal: {e:?}");
                     }
                 }
                 // KeepAlive exists only to keep idle proxies from dropping the
@@ -246,7 +248,11 @@ impl SignalingTopology<NoCallbacks, ServerState> for FullMeshTopology {
         // The peer disconnected: drop it and tell the room.
         if let Some(removed_peer) = state.remove_peer(&peer_id) {
             let room = removed_peer.room;
-            let event = Message::Text(JsonPeerEvent::PeerLeft(removed_peer.uuid).to_string().into());
+            let event = Message::Text(
+                JsonPeerEvent::PeerLeft(removed_peer.uuid)
+                    .to_string()
+                    .into(),
+            );
             let matched = state.remove_matched_peer(peer_id);
             if !matched.is_empty() {
                 for other in matched {
@@ -274,6 +280,9 @@ impl SignalingTopology<NoCallbacks, ServerState> for FullMeshTopology {
 /// port is already in use) is reported immediately and the local client is not
 /// left racing an unbound server. Serving then runs as a background task for
 /// the lifetime of the process.
+// The connection-request callback returns matchbox's own large error enum by
+// value; that Err size is dictated by the matchbox_signaling API, not us.
+#[allow(clippy::result_large_err)]
 pub fn spawn(addr: SocketAddr) {
     let mut state = ServerState::default();
     let mut server = SignalingServerBuilder::new(addr, FullMeshTopology, state.clone())

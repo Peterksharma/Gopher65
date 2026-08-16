@@ -4,8 +4,8 @@ mod cheats;
 mod device;
 mod netplay;
 mod retroachievements;
-mod signaling;
 mod savestates;
+mod signaling;
 mod ui;
 use clap::Parser;
 #[cfg(target_os = "android")]

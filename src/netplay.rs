@@ -662,8 +662,10 @@ pub fn overlay_stats(netplay: &mut Netplay) -> Option<String> {
     let sent = netplay.bytes_sent.load(Relaxed);
     let recv = netplay.bytes_recv.load(Relaxed);
     // bytes/sec * 8 bits / 1000 => kbit/s over the elapsed window.
-    let up_kbps = (sent.saturating_sub(netplay.last_bytes_sent) as f64 * 8.0 / 1000.0 / elapsed) as u64;
-    let down_kbps = (recv.saturating_sub(netplay.last_bytes_recv) as f64 * 8.0 / 1000.0 / elapsed) as u64;
+    let up_kbps =
+        (sent.saturating_sub(netplay.last_bytes_sent) as f64 * 8.0 / 1000.0 / elapsed) as u64;
+    let down_kbps =
+        (recv.saturating_sub(netplay.last_bytes_recv) as f64 * 8.0 / 1000.0 / elapsed) as u64;
     netplay.last_bytes_sent = sent;
     netplay.last_bytes_recv = recv;
     netplay.stats_timer = std::time::Instant::now();
