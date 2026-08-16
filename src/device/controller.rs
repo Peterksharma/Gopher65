@@ -158,8 +158,10 @@ pub fn pak_switch_event(device: &mut device::Device) {
         if channel.change_pak != PakType::None {
             //stop rumble if it is on
             if let Some(netplay) = &device.netplay {
-                if netplay.player_number == i {
-                    device::ui::input::set_rumble(&device.ui, 0, 0);
+                // Only stop rumble for slots this machine drives; the physical
+                // controller for slot i is at controller index i.
+                if netplay.owns_slot(i) {
+                    device::ui::input::set_rumble(&device.ui, i, 0);
                 }
             } else {
                 device::ui::input::set_rumble(&device.ui, i, 0);

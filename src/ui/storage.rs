@@ -208,7 +208,7 @@ pub fn init(ui: &mut ui::Ui, rom: &[u8]) {
 }
 
 pub fn load_saves(ui: &mut ui::Ui, netplay: &mut Option<netplay::Netplay>) {
-    if netplay.is_none() || netplay.as_ref().unwrap().player_number == 0 {
+    if netplay.is_none() || netplay.as_ref().unwrap().is_host() {
         let eep = std::fs::read(&ui.storage.paths.eep_file_path);
         if let Ok(eep) = eep {
             ui.storage.saves.eeprom.data = eep;
@@ -238,7 +238,7 @@ pub fn load_saves(ui: &mut ui::Ui, netplay: &mut Option<netplay::Netplay>) {
     }
 
     if netplay.is_some() {
-        if netplay.as_ref().unwrap().player_number == 0 {
+        if netplay.as_ref().unwrap().is_host() {
             netplay::send_save(
                 netplay.as_mut().unwrap(),
                 "eep",
@@ -397,7 +397,7 @@ fn writeback_sdcard(device: &mut device::Device) {
 }
 
 pub fn write_saves(device: &mut device::Device) {
-    if device.netplay.is_none() || device.netplay.as_ref().unwrap().player_number == 0 {
+    if device.netplay.is_none() || device.netplay.as_ref().unwrap().is_host() {
         if device.ui.storage.saves.write_to_disk {
             if device.ui.storage.saves.eeprom.write_pending {
                 write_save(&mut device.ui, SaveTypes::Eeprom16k)

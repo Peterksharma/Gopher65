@@ -19,29 +19,42 @@ impl ggrs::Config for GgrsConfig {
 
 pub struct MatchboxChannel {
     channel: matchbox_socket::WebRtcChannel,
+    // Byte counters shared with the Netplay struct so the overlay can report
+    // real throughput. GGRS 0.13 no longer exposes kbps, so we measure it here
+    // at the actual transport (the GGRS input traffic channel).
+    bytes_sent: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    bytes_recv: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl ggrs::NonBlockingSocket<matchbox_socket::PeerId> for MatchboxChannel {
     fn send_to(&mut self, msg: &ggrs::Message, addr: &matchbox_socket::PeerId) {
         let encoded = postcard::to_stdvec(msg).expect("serialization failed");
+        self.bytes_sent
+            .fetch_add(encoded.len() as u64, std::sync::atomic::Ordering::Relaxed);
         let _ = self.channel.try_send(encoded.into(), *addr);
     }
 
     fn receive_all_messages(&mut self) -> Vec<(matchbox_socket::PeerId, ggrs::Message)> {
-        self.channel
-            .receive()
-            .iter()
-            .filter_map(|(peer, packet)| {
-                let msg = postcard::from_bytes::<ggrs::Message>(packet).ok()?;
-                Some((*peer, msg))
-            })
-            .collect()
+        let received = self.channel.receive();
+        let mut out = Vec::with_capacity(received.len());
+        for (peer, packet) in received.iter() {
+            self.bytes_recv
+                .fetch_add(packet.len() as u64, std::sync::atomic::Ordering::Relaxed);
+            if let Ok(msg) = postcard::from_bytes::<ggrs::Message>(packet) {
+                out.push((*peer, msg));
+            }
+        }
+        out
     }
 }
 
 pub struct NetplayConfig {
     pub server_addr: String,
-    pub player_number: usize,
+    /// The 0-based player slots this machine owns locally. Each slot is driven
+    /// by the physical controller of the same index (slot == N64 channel ==
+    /// controller index), so a machine with two controllers owns e.g. [0, 1].
+    /// Remote peers see every one of these slots as belonging to this peer.
+    pub local_players: Vec<usize>,
     pub number_of_players: usize,
     pub input_delay: usize,
     pub ice_config_path: std::path::PathBuf,
@@ -52,7 +65,8 @@ pub struct Netplay {
     pub session: ggrs::P2PSession<GgrsConfig>,
     pub reliable_channel: matchbox_socket::WebRtcChannel,
     pub peers: Vec<matchbox_socket::PeerId>,
-    pub player_number: usize,
+    /// Slots this machine owns locally (see NetplayConfig::local_players).
+    pub local_players: Vec<usize>,
     pub connected: [bool; 4],
     pub input_delay: usize,
     pub messages: std::collections::HashMap<String, Vec<u8>>,
@@ -61,6 +75,29 @@ pub struct Netplay {
     pub requests: std::collections::VecDeque<ggrs::GgrsRequest<GgrsConfig>>,
     pub incoming_message: Vec<u8>,
     pub ice_config_path: std::path::PathBuf,
+    // Overlay statistics (throughput measured at the transport, plus a rolling
+    // 1-second sampling window).
+    pub number_of_players: usize,
+    pub bytes_sent: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub bytes_recv: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub stats_timer: std::time::Instant,
+    pub last_bytes_sent: u64,
+    pub last_bytes_recv: u64,
+}
+
+impl Netplay {
+    /// True if the given player slot (== N64 channel) is driven by a local
+    /// controller on this machine.
+    pub fn owns_slot(&self, slot: usize) -> bool {
+        self.local_players.contains(&slot)
+    }
+
+    /// The host is whichever single machine owns slot 0. Save-state authority,
+    /// RNG/RTC seeding, etc. are anchored to the host so exactly one machine
+    /// decides them, independent of how many local players each machine has.
+    pub fn is_host(&self) -> bool {
+        self.owns_slot(0)
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -131,11 +168,18 @@ fn receive_message(netplay: &mut Netplay, name: &str) -> Vec<u8> {
 fn send_player_number(
     channel: &mut matchbox_socket::WebRtcChannel,
     peers: &[matchbox_socket::PeerId],
-    player_number: usize,
+    local_players: &[usize],
 ) {
+    // Announce every slot this machine owns. The payload is a list of u64
+    // slot indices (one machine may own several), so a peer learns all of our
+    // local slots from a single message.
+    let mut data = Vec::with_capacity(local_players.len() * 8);
+    for slot in local_players {
+        data.extend_from_slice(&(*slot as u64).to_be_bytes());
+    }
     let message = NetplayMessage {
         name: "player_number".to_string(),
-        data: (player_number as u64).to_be_bytes().to_vec(),
+        data,
     };
     let data = postcard::to_stdvec(&message).unwrap();
     for peer in peers {
@@ -152,10 +196,12 @@ fn get_player_numbers(
     for (peer, data) in channel.receive() {
         let message = postcard::from_bytes::<NetplayMessage>(&data).unwrap();
         if message.name == "player_number" {
-            player_numbers.insert(
-                u64::from_be_bytes(message.data.try_into().unwrap()) as usize,
-                Some(peer),
-            );
+            // The payload is a concatenation of 8-byte slot indices; record
+            // every slot as owned by this peer.
+            for slot_bytes in message.data.chunks_exact(8) {
+                let slot = u64::from_be_bytes(slot_bytes.try_into().unwrap()) as usize;
+                player_numbers.insert(slot, Some(peer));
+            }
         }
     }
 }
@@ -339,17 +385,23 @@ fn process_netplay(device: &mut device::Device) {
 
 fn advance_frame(device: &mut device::Device) {
     let netplay = device.netplay.as_mut().unwrap();
-    let local_input = if netplay.session.current_frame() > netplay.session.max_prediction() as i32 {
-        ui::input::get(&mut device.ui, 0)
-    } else {
-        //workaround for disabled rollback
-        ui::input::InputData::default()
-    };
-    let local_handle = *netplay.session.local_player_handles().first().unwrap();
-    netplay
-        .session
-        .add_local_input(local_handle, local_input)
-        .unwrap();
+    // GGRS requires an input for EVERY local handle each frame. A handle equals
+    // its player slot equals its N64 controller channel, so each local player
+    // reads its own distinct physical controller via ui::input::get(ui, slot).
+    let past_prediction = netplay.session.current_frame() > netplay.session.max_prediction() as i32;
+    let local_handles = netplay.session.local_player_handles();
+    for handle in local_handles {
+        let local_input = if past_prediction {
+            ui::input::get(&mut device.ui, handle)
+        } else {
+            // workaround for disabled rollback
+            ui::input::InputData::default()
+        };
+        netplay
+            .session
+            .add_local_input(handle, local_input)
+            .unwrap();
+    }
 
     // avoid rollback
     while !netplay.disconnected
@@ -433,8 +485,14 @@ pub fn init(
     let mut now = std::time::Instant::now();
     let mut message_timer = now;
     let socket_timeout = std::time::Duration::from_secs_f64(rand::random_range(8.0..10.0));
-    let mut player_numbers =
-        std::collections::BTreeMap::from([(netplay_config.player_number, None)]);
+    // Seed the ownership map with every slot this machine owns locally (value
+    // None == "mine"). Remote peers' slots are filled in during the handshake.
+    let mut player_numbers: std::collections::BTreeMap<usize, Option<matchbox_socket::PeerId>> =
+        netplay_config
+            .local_players
+            .iter()
+            .map(|slot| (*slot, None))
+            .collect();
 
     ui::video::onscreen_message(
         "Connecting to netplay peers...\nPlease wait...",
@@ -456,11 +514,15 @@ pub fn init(
             .connected_peers()
             .collect::<Vec<matchbox_socket::PeerId>>();
 
-        if connected_peers.len() == netplay_config.number_of_players - 1 {
+        // A machine may own several slots, so we can't assume the peer count
+        // equals number_of_players - 1. Instead, announce our slots and learn
+        // our peers' slots whenever any peer is connected, and finish once every
+        // slot has a known owner and all owning peers are connected.
+        if !connected_peers.is_empty() {
             send_player_number(
                 socket.channel_mut(1),
                 &connected_peers,
-                netplay_config.player_number,
+                &netplay_config.local_players,
             );
             get_player_numbers(socket.channel_mut(1), &mut player_numbers);
             if player_numbers.len() == netplay_config.number_of_players
@@ -468,7 +530,8 @@ pub fn init(
             {
                 break;
             }
-        } else if now.elapsed() > socket_timeout {
+        }
+        if now.elapsed() > socket_timeout {
             socket.close();
             player_numbers.retain(|_, peer| peer.is_none());
             socket = create_socket(builder.clone());
@@ -517,7 +580,11 @@ pub fn init(
             session_builder = session_builder
                 .add_player(ggrs::PlayerType::Remote(*peer), *i)
                 .unwrap();
-            peers.push(*peer);
+            // A peer that owns several slots appears once per slot here; keep
+            // `peers` de-duplicated so reliable messages are sent to it once.
+            if !peers.contains(peer) {
+                peers.push(*peer);
+            }
         } else {
             session_builder = session_builder
                 .add_player(ggrs::PlayerType::Local, *i)
@@ -525,8 +592,12 @@ pub fn init(
         }
     }
 
+    let bytes_sent = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let bytes_recv = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let matchbox_channel = MatchboxChannel {
         channel: socket.take_channel(0).unwrap(),
+        bytes_sent: bytes_sent.clone(),
+        bytes_recv: bytes_recv.clone(),
     };
     let reliable_channel = socket.take_channel(1).unwrap();
 
@@ -557,7 +628,7 @@ pub fn init(
         session,
         reliable_channel,
         peers,
-        player_number: netplay_config.player_number,
+        local_players: netplay_config.local_players.clone(),
         connected: [
             netplay_config.number_of_players > 0,
             netplay_config.number_of_players > 1,
@@ -569,7 +640,55 @@ pub fn init(
         received_data: std::collections::VecDeque::new(),
         messages: std::collections::HashMap::new(),
         ice_config_path: netplay_config.ice_config_path.clone(),
+        number_of_players: netplay_config.number_of_players,
+        bytes_sent,
+        bytes_recv,
+        stats_timer: std::time::Instant::now(),
+        last_bytes_sent: 0,
+        last_bytes_recv: 0,
     })
+}
+
+/// Build the netplay overlay line once per second (throughput measured here,
+/// latency and frame-lead from GGRS). Returns None between samples so the
+/// caller can poll it every frame cheaply.
+pub fn overlay_stats(netplay: &mut Netplay) -> Option<String> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let elapsed = netplay.stats_timer.elapsed().as_secs_f64();
+    if elapsed < 1.0 {
+        return None;
+    }
+
+    let sent = netplay.bytes_sent.load(Relaxed);
+    let recv = netplay.bytes_recv.load(Relaxed);
+    // bytes/sec * 8 bits / 1000 => kbit/s over the elapsed window.
+    let up_kbps = (sent.saturating_sub(netplay.last_bytes_sent) as f64 * 8.0 / 1000.0 / elapsed) as u64;
+    let down_kbps = (recv.saturating_sub(netplay.last_bytes_recv) as f64 * 8.0 / 1000.0 / elapsed) as u64;
+    netplay.last_bytes_sent = sent;
+    netplay.last_bytes_recv = recv;
+    netplay.stats_timer = std::time::Instant::now();
+
+    // Aggregate the worst (highest) ping and lag across all remote players.
+    // network_stats() errors for local handles and before ~1s of data, which
+    // we simply skip.
+    let mut ping: u128 = 0;
+    let mut behind: i32 = 0;
+    for handle in 0..netplay.number_of_players {
+        if let Ok(stats) = netplay.session.network_stats(handle) {
+            ping = ping.max(stats.ping);
+            behind = behind.max(stats.local_frames_behind);
+        }
+    }
+    let ahead = netplay.session.frames_ahead();
+
+    let line = format!(
+        "Ping: {ping}ms  Up: {up_kbps} kb/s  Down: {down_kbps} kb/s  Lead: {ahead}  Lag: {behind}"
+    );
+    // Optional headless logging for latency measurement / debugging.
+    if std::env::var("GOPHER_NETSTATS_LOG").is_ok() {
+        eprintln!("[NETSTATS] {line}");
+    }
+    Some(line)
 }
 
 pub fn close(netplay: &mut Netplay) {

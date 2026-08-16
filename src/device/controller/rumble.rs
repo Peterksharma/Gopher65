@@ -17,8 +17,10 @@ pub fn write(device: &mut device::Device, channel: usize, address: u16, data: us
         let rumble = device.pif.ram[data + size - 1];
 
         if let Some(netplay) = &device.netplay {
-            if netplay.player_number == channel {
-                device::ui::input::set_rumble(&device.ui, 0, rumble);
+            // Rumble only the slots this machine drives; the physical controller
+            // for slot `channel` is at controller index `channel`.
+            if netplay.owns_slot(channel) {
+                device::ui::input::set_rumble(&device.ui, channel, rumble);
             }
         } else {
             device::ui::input::set_rumble(&device.ui, channel, rumble);

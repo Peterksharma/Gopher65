@@ -31,8 +31,11 @@ pub struct Args {
     pub cheats: Option<String>,
     #[arg(long, value_name = "NETPLAY_SERVER_ADDR", hide = true)]
     pub netplay_server_addr: Option<String>,
+    // Repeatable: pass once per local player this machine drives, e.g.
+    // `--netplay-player-number 0 --netplay-player-number 1` for two local
+    // controllers. A single occurrence preserves the old one-player behavior.
     #[arg(long, value_name = "NETPLAY_PLAYER_NUMBER", hide = true)]
-    pub netplay_player_number: Option<usize>,
+    pub netplay_player_number: Vec<usize>,
     #[arg(long, value_name = "NETPLAY_NUMBER_OF_PLAYERS", hide = true)]
     pub netplay_number_of_players: Option<usize>,
     #[arg(long, value_name = "NETPLAY_INPUT_DELAY", hide = true)]
@@ -241,13 +244,13 @@ pub fn run(args: Args, arg_count: usize) -> std::io::Result<()> {
         };
 
         let netplay_config = if let Some(server_addr) = args.netplay_server_addr
-            && let Some(player_number) = args.netplay_player_number
+            && !args.netplay_player_number.is_empty()
             && let Some(number_of_players) = args.netplay_number_of_players
             && let Some(input_delay) = args.netplay_input_delay
         {
             Some(netplay::NetplayConfig {
                 server_addr,
-                player_number,
+                local_players: args.netplay_player_number.clone(),
                 number_of_players,
                 input_delay,
                 ice_config_path: dirs.cache_dir.join("ice_config.json"),

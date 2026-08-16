@@ -131,6 +131,7 @@ static bool display_challenge_indicator;
 
 static bool display_fps;
 static Vulkan::ImageHandle fps_image;
+static Vulkan::ImageHandle netstats_image;
 
 static std::queue<JoystickEvent> joystick_events;
 
@@ -452,6 +453,7 @@ void rdp_init(void *_window, GFX_INFO _gfx_info, const void *font,
   achievement_challenge_indicator_image = Vulkan::ImageHandle();
   achievement_progress_indicator_image = Vulkan::ImageHandle();
   fps_image = Vulkan::ImageHandle();
+  netstats_image = Vulkan::ImageHandle();
   display_fps = false;
 }
 
@@ -465,6 +467,7 @@ void rdp_close() {
   achievement_challenge_indicator_image = Vulkan::ImageHandle();
   achievement_progress_indicator_image = Vulkan::ImageHandle();
   fps_image = Vulkan::ImageHandle();
+  netstats_image = Vulkan::ImageHandle();
 
   if (wsi)
     wsi->end_frame();
@@ -559,6 +562,36 @@ static void draw_fps(CommandBufferHandle cmd, VkViewport vp) {
   cmd->set_viewport(vp);
 
   cmd->draw(3);
+}
+
+// The netplay stats line sits just above the FPS line (both anchored to the
+// bottom-left), so they stack without overlapping.
+static void draw_netstats(CommandBufferHandle cmd, VkViewport vp) {
+  cmd->set_texture(0, 0, netstats_image->get_view(),
+                   Vulkan::StockSampler::NearestClamp);
+  float fps_h = fps_image ? (float)fps_image->get_height() : 0.0f;
+  vp.y = vp.y + vp.height - netstats_image->get_height() - fps_h;
+  vp.height = netstats_image->get_height();
+  vp.width = netstats_image->get_width();
+  cmd->set_viewport(vp);
+
+  cmd->draw(3);
+}
+
+static void rdp_set_netstats_callback(void *userdata) {
+  char *text = (char *)userdata;
+  if (!wsi) {
+    SDL_free(text);
+    return;
+  }
+  netstats_image = create_message_image(
+      wsi->get_device(), 0, achievement_challenge_indicator_font, text);
+  SDL_free(text);
+}
+void rdp_set_netstats(const char *text) {
+  if (display_fps) {
+    SDL_RunOnMainThread(rdp_set_netstats_callback, SDL_strdup(text), false);
+  }
 }
 
 static void pop_message(void *userdata) { messages.pop(); }
@@ -679,6 +712,10 @@ static void render_frame(Vulkan::Device &device) {
 
     if (messages.empty() && display_fps && fps_image) {
       draw_fps(cmd, vp);
+    }
+
+    if (messages.empty() && display_fps && netstats_image) {
+      draw_netstats(cmd, vp);
     }
 
     cmd->end_render_pass();

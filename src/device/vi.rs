@@ -140,6 +140,15 @@ pub fn update_screen(device: &mut device::Device) {
         ui::video::update_screen();
         device.speed_limiter.frame_counter += 1;
         let _ = device.ui.video.vis_tx.as_ref().unwrap().send(true);
+
+        // Refresh the netplay stats overlay (throughput/ping/lead). The helper
+        // rate-limits itself to about once per second, so calling it per
+        // presented frame is cheap.
+        if let Some(netplay) = device.netplay.as_mut()
+            && let Some(text) = netplay::overlay_stats(netplay)
+        {
+            ui::video::set_netstats(&text);
+        }
     }
 
     if device.netplay.is_some() {

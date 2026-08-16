@@ -60,6 +60,14 @@ sdl3-src = "3.4"
 slint-build = { version = "1.12", optional = true }
 cc = { version = "1.2", features = ["parallel"] }
 
+# Gopher65: build SDL from our patched source so the Switch 2 Pro Controller
+# works on macOS (upstream SDL's Switch2 driver is libusb-only and cannot claim
+# the HID interface the macOS kernel holds). Same version (3.4.14) as upstream —
+# only src/hidapi/SDL_hidapi.c, src/joystick/hidapi/SDL_hidapi_switch2.c and
+# src/misc/SDL_libusb.c are patched. See third_party/sdl3-src-patched.
+[patch.crates-io]
+sdl3-src = { path = "third_party/sdl3-src-patched" }
+
 [profile.release]
 lto = "thin"
 strip = true

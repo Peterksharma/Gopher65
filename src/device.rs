@@ -138,7 +138,7 @@ fn set_rng() -> rand::rngs::Xoshiro256PlusPlus {
 fn init_rng_rtc(device: &mut Device) {
     let mut rng_seed = set_rng().next_u64();
     if let Some(netplay) = &mut device.netplay {
-        if netplay.player_number == 0 {
+        if netplay.is_host() {
             netplay::send_rng(netplay, rng_seed);
         } else {
             rng_seed = netplay::receive_rng(netplay);
@@ -151,7 +151,7 @@ fn init_rng_rtc(device: &mut Device) {
         .unwrap()
         .as_secs() as i64;
     if let Some(netplay) = &mut device.netplay {
-        if netplay.player_number == 0 {
+        if netplay.is_host() {
             netplay::send_rtc(netplay, device.cart.rtc_timestamp);
         } else {
             device.cart.rtc_timestamp = netplay::receive_rtc(netplay);

@@ -67,6 +67,7 @@ size_t rdp_state_size();
 void rdp_save_state(uint8_t *state);
 void rdp_load_state(GFX_INFO _gfx_info, const uint8_t *state);
 void rdp_set_fps(uint32_t fps, uint32_t vis);
+void rdp_set_netstats(const char *text);
 
 JoystickEvent get_joystick_event();
 

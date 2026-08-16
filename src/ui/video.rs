@@ -247,7 +247,7 @@ pub fn check_callback(device: &mut device::Device) -> (bool, bool) {
     }
 
     if let Some(netplay) = &mut device.netplay
-        && netplay.player_number == 0
+        && netplay.is_host()
     {
         if callback.decrease_input_delay {
             netplay::send_input_delay(netplay, netplay.input_delay - 1);
@@ -276,5 +276,13 @@ pub fn onscreen_message(message: &str, milliseconds: MESSAGE_LENGTH) {
     unsafe {
         let c_message = std::ffi::CString::new(message).unwrap();
         rdp_onscreen_message(c_message.as_ptr(), milliseconds)
+    };
+}
+
+/// Update the netplay stats line shown under the FPS overlay (toggled by F1).
+pub fn set_netstats(text: &str) {
+    unsafe {
+        let c_text = std::ffi::CString::new(text).unwrap();
+        rdp_set_netstats(c_text.as_ptr())
     };
 }
