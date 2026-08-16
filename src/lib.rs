@@ -4,6 +4,7 @@ mod cheats;
 mod device;
 mod netplay;
 mod retroachievements;
+mod signaling;
 mod savestates;
 mod ui;
 use clap::Parser;
@@ -40,6 +41,15 @@ pub struct Args {
     pub netplay_number_of_players: Option<usize>,
     #[arg(long, value_name = "NETPLAY_INPUT_DELAY", hide = true)]
     pub netplay_input_delay: Option<usize>,
+    // Host an in-process signaling rendezvous so peers connect directly to this
+    // machine (no external server). The other players point
+    // `--netplay-server-addr` at ws://THIS_HOST_IP:<port>/<room>.
+    #[arg(long, hide = true)]
+    pub netplay_host: bool,
+    #[arg(long, value_name = "NETPLAY_HOST_PORT", hide = true)]
+    pub netplay_host_port: Option<u16>,
+    #[arg(long, value_name = "NETPLAY_ROOM", hide = true)]
+    pub netplay_room: Option<String>,
     #[arg(
         long,
         value_name = "PROFILE_NAME",
@@ -192,7 +202,11 @@ pub fn run(args: Args, arg_count: usize) -> std::io::Result<()> {
         let mut shutdown_tx = None;
         let mut usb_handle = None;
 
-        if args.netplay_server_addr.is_none() {
+        // Netplay is active either when joining a server address or when hosting
+        // an embedded signaling rendezvous locally.
+        let netplay_active = args.netplay_server_addr.is_some() || args.netplay_host;
+
+        if !netplay_active {
             for i in 0..4 {
                 if device.ui.config.input.transfer_pak[i]
                     && !device.ui.config.input.gb_rom_path[i].is_empty()
@@ -218,7 +232,7 @@ pub fn run(args: Args, arg_count: usize) -> std::io::Result<()> {
         {
             let username = args.ra_username.unwrap_or(ra_config.username.clone());
             retroachievements::init_client(
-                if cfg!(ra_hardcore_enabled) && args.netplay_server_addr.is_none() {
+                if cfg!(ra_hardcore_enabled) && !netplay_active {
                     ra_config.hardcore
                 } else {
                     false
@@ -243,7 +257,26 @@ pub fn run(args: Args, arg_count: usize) -> std::io::Result<()> {
             retroachievements::RAConfig::default()
         };
 
-        let netplay_config = if let Some(server_addr) = args.netplay_server_addr
+        // Resolve the signaling address. In host mode we start an in-process
+        // full-mesh rendezvous and connect to it over loopback; peers connect
+        // to ws://THIS_HOST_IP:<port>/<room>. Otherwise we use the address the
+        // player passed explicitly.
+        let effective_server_addr = if args.netplay_host {
+            let port = args.netplay_host_port.unwrap_or(3536);
+            let room = args
+                .netplay_room
+                .clone()
+                .unwrap_or_else(|| "gopher65".to_string());
+            signaling::spawn(std::net::SocketAddr::from((
+                std::net::Ipv4Addr::UNSPECIFIED,
+                port,
+            )));
+            Some(format!("ws://127.0.0.1:{port}/{room}"))
+        } else {
+            args.netplay_server_addr.clone()
+        };
+
+        let netplay_config = if let Some(server_addr) = effective_server_addr
             && !args.netplay_player_number.is_empty()
             && let Some(number_of_players) = args.netplay_number_of_players
             && let Some(input_delay) = args.netplay_input_delay

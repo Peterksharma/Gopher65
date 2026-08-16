@@ -26,6 +26,12 @@ mimalloc = "0.1"
 regex = "1.11"
 tokio-tungstenite = { version = "0.30", features = ["native-tls-vendored"] }
 matchbox_socket = "0.14"
+# Embedded signaling server for `--netplay-host` (see src/signaling.rs). Same
+# 0.14 line as matchbox_socket so client/server wire protocols match.
+matchbox_signaling = "0.14"
+matchbox_protocol = { version = "0.14", features = ["json"] }
+async-trait = "0.1"
+axum = { version = "0.8", features = ["ws"] }
 ggrs = { version = "0.13", features = ["sync-send"] }
 rustc-hash = "2.1"
 futures = "0.3"
