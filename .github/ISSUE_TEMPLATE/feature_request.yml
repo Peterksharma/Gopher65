@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest an improvement for Gopher65's additions (controller, netplay, overlay).
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gopher65 focuses on its own additions — Switch 2 controller support,
+        local + online multiplayer, and the network overlay. Requests about the
+        core emulator are better directed upstream to
+        [gopher64](https://github.com/gopher64/gopher64).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like, and why?
+      description: Describe the use case, not just the solution.
+    validations:
+      required: true

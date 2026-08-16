@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Gopher65 isn't working right.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! This tracker is for **Gopher65** (this fork) only.
+        For questions about the emulator core itself, see the
+        [gopher64 wiki](https://github.com/gopher64/gopher64/wiki).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What part is affected?
+      options:
+        - Switch 2 controller (macOS)
+        - Netplay — hosting / joining
+        - Netplay — multiple local players
+        - Network overlay (F1)
+        - Building from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - Windows (x64)
+        - Windows (ARM64)
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Gopher65 version
+      description: From the release name, or `--version` output.
+      placeholder: e.g. v0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: netplay-details
+    attributes:
+      label: Netplay details (if applicable)
+      description: How many machines/players, who hosted, LAN or internet, the exact flags/command used.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output / logs
+      description: Any error text printed to the terminal (run from a terminal to capture it).
+      render: shell
+    validations:
+      required: false

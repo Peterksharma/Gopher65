@@ -38,7 +38,7 @@ pub fn init(device: &mut device::Device, netplay: bool) {
     ui::sdl_init(sdl3_sys::init::SDL_INIT_VIDEO);
     ui::ttf_init();
 
-    let window_title = std::ffi::CString::new("gopher64").unwrap();
+    let window_title = std::ffi::CString::new("Gopher65").unwrap();
 
     let mut flags = sdl3_sys::video::SDL_WINDOW_VULKAN
         | sdl3_sys::video::SDL_WINDOW_RESIZABLE

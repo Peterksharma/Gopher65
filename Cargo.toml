@@ -91,6 +91,6 @@ strip = false
 name = "Gopher65"
 identifier = "io.github.peterksharma.gopher65"
 category = "public.app-category.games"
-icon = ["data/icon/gopher64_128x128.png","data/icon/gopher64_256x256.png","data/icon/gopher64_512x512.png"]
+icon = ["data/icon/gopher65_128x128.png","data/icon/gopher65_256x256.png","data/icon/gopher65_512x512.png"]
 osx_frameworks = ["/opt/homebrew/opt/molten-vk/lib/libMoltenVK.dylib","/opt/homebrew/opt/libusb/lib/libusb-1.0.dylib"]
 osx_minimum_system_version = "15.0"

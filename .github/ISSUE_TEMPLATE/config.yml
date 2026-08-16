@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: gopher64 (upstream emulator)
+    url: https://github.com/gopher64/gopher64
+    about: Questions about the emulator core, general N64 features, or non-Gopher65 behavior belong upstream, not here.
+  - name: gopher64 wiki (controls, netplay basics, homebrew)
+    url: https://github.com/gopher64/gopher64/wiki
+    about: Setup and usage docs inherited from gopher64.

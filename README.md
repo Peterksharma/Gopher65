@@ -1,61 +1,81 @@
+<div align="center">
+
 # Gopher65
 
-**Gopher65 is a fork of [gopher64](https://github.com/gopher64/gopher64)** (a
-cross-platform N64 emulator by loganmc10) that adds three things on top of it:
+**An N64 emulator for playing together — a friendly fork of [gopher64](https://github.com/gopher64/gopher64).**
 
-1. **Nintendo Switch 2 Pro Controller support on macOS.** Upstream SDL's Switch 2
-   driver is libusb-only and cannot claim the HID interface the macOS kernel
-   holds, so the controller does not work there. Gopher65 builds SDL from a
-   minimally-patched copy that opens its own libusb handle on the controller's
-   vendor bulk interface. The patch is macOS-only and inert on every other
-   platform.
-2. **Multiple local players in netplay.** One machine can drive more than one
-   local player in an online session (couch co-op alongside networked players).
-3. **Embedded host signaling + an on-screen net overlay.** A player can host the
-   netplay rendezvous in-process (`--netplay-host`) — no third-party or cloud
-   server — and an F1 overlay shows FPS plus ping / bandwidth / rollback lead &
-   lag for tuning.
+[Download](../../releases) · [Features](#what-gopher65-adds) · [Netplay guide](#netplay-quick-start) · [Building](#building)
 
-Everything else is stock gopher64.
+</div>
 
-## Relationship to upstream
+---
 
-This is an **independent fork and is not affiliated with or endorsed by the
-gopher64 project.** Please **do not** file Gopher65 issues on the upstream
-tracker or ask loganmc10 for support with this build — use this repository's
-issue tracker instead. Enormous credit and thanks to loganmc10 and the gopher64
-contributors for the emulator this is built on.
+## Why this fork exists
 
-> **Netplay compatibility:** Gopher65 uses its own signaling and does not connect
-> to the official gopher64 lobby. Everyone in a session must run **Gopher65**
-> (matching versions). It will not matchmake with players on stock gopher64.
+Gopher65 is built on **[gopher64](https://github.com/gopher64/gopher64)**, an excellent
+cross-platform N64 emulator by **loganmc10**. Enormous credit goes to loganmc10 and the
+gopher64 contributors — Gopher65 is their emulator with a few extra features layered on top.
 
-## Downloads
+Those features were developed to improve local + online multiplayer, but they fall outside
+what the upstream project accepts as contributions, so rather than let them go to waste they
+are maintained here as an independent fork. **Gopher65 is not affiliated with or endorsed by
+the gopher64 project** — please don't file Gopher65 issues on their tracker or ask loganmc10
+for support with this build. Use [this repo's issues](../../issues) instead.
 
-Grab the latest build from this repository's [Releases](../../releases).
+## What Gopher65 adds
 
-- **Windows** (x86_64 / arm64): standalone `.exe`. Unsigned — SmartScreen will
-  warn on first run; choose *More info → Run anyway*.
-- **macOS** (Apple Silicon): `.app` in a `.zip`. Not notarized — on first launch
-  **right-click the app → Open** (or run `xattr -cr Gopher65.app` once).
+Everything else is stock gopher64. On top of it, Gopher65 adds:
 
-## Netplay usage
+- 🎮 **Nintendo Switch 2 Pro Controller support on macOS.**
+  Upstream SDL's Switch 2 driver can't claim the HID interface the macOS kernel holds, so the
+  controller doesn't work there. Gopher65 builds SDL from a small macOS-only patch that talks
+  to the controller over its vendor USB interface. Compiled statically into the app — nothing
+  extra to install.
 
-Player numbers are 0-based (P1 = 0, P2 = 1, …). `--netplay-number-of-players` is
-the **total** across all machines.
+- 🕹️ **Multiple local players in one netplay session.**
+  A single machine can drive more than one local player online — couch co-op *and* networked
+  players in the same game (e.g. two players on one Mac + a third across the internet).
 
-**Host** (also plays; brokers the handshake in-process — no external server):
+- 📡 **Host your own netplay session — no third-party server.**
+  `--netplay-host` runs the matchmaking rendezvous in-process, so one player hosts directly and
+  everyone connects to them. No cloud service, no accounts. Gameplay is direct peer-to-peer.
+
+- 📊 **In-game network overlay (press F1).**
+  FPS plus ping, up/down bandwidth, and rollback lead/lag — so you can tune input delay live.
+
+> **Netplay compatibility:** Gopher65 uses its own signaling and does **not** connect to the
+> official gopher64 lobby. Everyone in a session must run **Gopher65** (matching versions).
+
+## Download
+
+Grab the latest build from **[Releases](../../releases)**.
+
+| Platform | File | First-run note |
+|---|---|---|
+| **macOS** (Apple Silicon) | `gopher65-macos-aarch64.zip` | Not notarized — **right-click the app → Open** the first time (or run `xattr -cr Gopher65.app`). |
+| **Windows** (x64 / ARM64) | `gopher65-windows-*.exe` | Unsigned — SmartScreen may warn: **More info → Run anyway**. |
+
+> Windows Switch 2 controller support is **untested** — the controller fix is macOS-specific;
+> on Windows SDL may already handle the pad, but no one has verified it. Reports welcome.
+
+## Netplay quick start
+
+Player numbers are 0-based (P1 = `0`, P2 = `1`, …). `--netplay-number-of-players` is the
+**total** across all machines. All players must load the **exact same ROM** (byte-identical).
+
+**Host** (also plays; brokers the handshake in-process):
 
 ```
-gopher65 --netplay-host \
-         --netplay-room gauntlet \
+gopher65 --netplay-host --netplay-room gauntlet \
          --netplay-player-number 0 \
          --netplay-number-of-players 3 \
          --netplay-input-delay 2 \
          "/path/to/rom.z64"
 ```
 
-**Joiners** point at the host's LAN/public IP and the same room:
+Prints `Embedded signaling server listening on 0.0.0.0:3536`.
+
+**Joiners** point at the host's IP and the same room:
 
 ```
 gopher65 --netplay-server-addr ws://HOST_IP:3536/gauntlet \
@@ -65,19 +85,16 @@ gopher65 --netplay-server-addr ws://HOST_IP:3536/gauntlet \
          "/path/to/rom.z64"
 ```
 
-**Couch co-op:** to drive two local players on one machine, pass
-`--netplay-player-number` twice (e.g. `--netplay-player-number 0
---netplay-player-number 1`) and enable both ports in Controller Configuration,
-one physical controller each.
+**Couch co-op:** to drive two local players on one machine, pass `--netplay-player-number`
+twice (`--netplay-player-number 0 --netplay-player-number 1`) and enable both ports in
+Controller Configuration, one physical controller each.
 
 Notes:
-- Default host port is `3536` (override with `--netplay-host-port`).
-- On a **LAN** this needs no setup. Over the **internet**, the host must
-  forward the signaling port; gameplay itself is direct P2P (STUN-assisted),
-  so it uses little bandwidth. Very strict/CGNAT setups may need a TURN relay.
-- All players must load the **exact same ROM** file (byte-identical).
-- Press **F1** in-game for the FPS / netplay overlay; lower input delay while
-  watching lead/lag stay near zero.
+- On a **LAN** this needs no setup. Over the **internet**, the host forwards the signaling port
+  (default `3536`, override with `--netplay-host-port`); gameplay is direct P2P (STUN-assisted),
+  so it uses little bandwidth. Very strict/CGNAT networks may need a TURN relay.
+- Press **F1** in-game for the FPS / network overlay; lower input delay while lead/lag stays
+  near zero.
 
 ## Building
 
@@ -88,31 +105,27 @@ Notes:
 5. `cargo build --release`
 6. `./target/release/gopher64 /path/to/rom.z64`
 
-The patched SDL is vendored in `third_party/sdl3-src-patched/` and wired in via
-`[patch.crates-io]`, so no extra steps are needed — it compiles statically into
-the binary.
+The patched SDL is vendored in `third_party/sdl3-src-patched/` and wired via `[patch.crates-io]`,
+so it compiles statically into the binary — no extra steps.
 
 ## Controls & general use
 
 Gopher65 inherits gopher64's controls and features. See the upstream
-[wiki](https://github.com/gopher64/gopher64/wiki) for keyboard/gamepad defaults,
-homebrew, savestates, cheats, and RetroAchievements.
+[wiki](https://github.com/gopher64/gopher64/wiki) for keyboard/gamepad defaults, homebrew,
+savestates, cheats, and RetroAchievements.
 
 ## License
 
-Gopher65, like gopher64, is licensed under the **GPLv3** (see [LICENSE](LICENSE)).
-Many portions of gopher64 have been adapted from mupen64plus and/or ares; the
-mupen64plus license is [here](https://github.com/mupen64plus/mupen64plus-core/blob/master/LICENSES)
-and the ares license is [here](https://github.com/ares-emulator/ares/blob/master/LICENSE).
-
-`third_party/sdl3-src-patched/` is SDL (zlib license) as distributed in the
-`sdl3-src` crate, with the macOS-only patches described above; its license is
+Gopher65, like gopher64, is licensed under the **GPLv3** (see [LICENSE](LICENSE)). Portions of
+gopher64 are adapted from mupen64plus and/or ares
+([mupen64plus license](https://github.com/mupen64plus/mupen64plus-core/blob/master/LICENSES),
+[ares license](https://github.com/ares-emulator/ares/blob/master/LICENSE)).
+`third_party/sdl3-src-patched/` is SDL (zlib license) with macOS-only patches; its license is
 retained in that directory.
 
 ## Privacy
 
-During netplay, the host's signaling server sees the connecting players' IP
-addresses as part of establishing the peer-to-peer connection (the same
-information any direct connection reveals). No data is collected or stored by
-this project. If you enable RetroAchievements, some data is sent to their
-systems — see their [terms](https://retroachievements.org/terms).
+During netplay, the host's signaling server sees connecting players' IP addresses as part of
+establishing the peer-to-peer connection (the same information any direct connection reveals).
+This project collects and stores nothing. If you enable RetroAchievements, some data is sent to
+their systems — see their [terms](https://retroachievements.org/terms).
